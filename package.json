@@ -1,0 +1,10 @@
+{
+  "name": "reviews-to-features",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Reference implementation for the reviews-to-features skill (ranking + scraper).",
+  "scripts": {
+    "test": "node --test examples/*.test.mjs"
+  }
+}

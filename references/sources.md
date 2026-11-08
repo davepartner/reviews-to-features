@@ -1,91 +1,91 @@
-# Sources — Getting the negative reviews
+# Sources — getting the negative reviews
 
-Each source has a preferred (authorized/public) path and an unofficial fallback. Prefer the official
-path; respect rate limits and terms of service everywhere.
-
----
-
-## Google Play Store
-
-**Preferred (authorized):** Play Console **Reviews API** — server-to-server OAuth2. Returns structured
-reviews (`comment`, `starRating`, `reviewer`, `lastModified`). This is the only fully-authorized way
-to pull your own app's reviews programmatically.
-
-**Unofficial (public, no auth):** the `google-play-scraper` npm package:
-
-```js
-import gplay from 'google-play-scraper';
-const reviews = await gplay.reviews({
-  appId: 'com.example.app',
-  sort: gplay.sort.NEWEST,
-  num: 500,
-});
-// each: { id, userName, text, score, date, version }
-```
-
-Filter to `score <= 3` for the negative set. Do not persist `userName` (privacy).
+Each source has a preferred path and a fallback. Prefer official/authorized APIs; respect rate limits
+and terms of service. **Scraping is fragile and may violate ToS** — treat unofficial paths as
+best-effort.
 
 ---
 
-## Apple App Store
+## Apple App Store (public, no auth)
 
-**Preferred (public, no auth):** the customer-reviews **RSS feed**:
+Customer-reviews RSS feed (per storefront, ~500 entries/page):
 
 ```
 https://itunes.apple.com/{country}/rss/customerreviews/id={appId}/sortBy=mostRecent/json
 ```
 
-- `{country}` — e.g. `us`, `gb`, `de` (the feed is per-storefront; query the ones you care about).
-- `{appId}` — the numeric App Store id.
+- `{country}` — `us`, `gb`, `de`, … (query each storefront you care about).
+- `{appId}` — numeric App Store id.
 
-A ready-to-run scraper is in `examples/fetch-appstore-reviews.mjs`.
+Ready-to-run scraper: `examples/fetch-appstore-reviews.mjs`. Filter to `rating <= 3`.
 
-**Unofficial:** the `app-store-scraper` npm package (`reviews({ id, country, sort })`).
+---
 
-Filter to `rating <= 3`.
+## Google Play Store
+
+- **Authorized (your own app):** Play Console **Reviews API** — server-to-server OAuth2, structured
+  (`comment`, `starRating`, `lastModified`).
+- **Unofficial (fragile):** `google-play-scraper` npm (`reviews({ appId, sort, num })`). It breaks when
+  Play changes its markup; don't build a product on it.
+
+There is **no public official API** for Play reviews. Filter to `score <= 3`.
 
 ---
 
 ## Twitter / X (websites & brands)
 
-**Official:** X API v2 — `GET /2/tweets/search/recent` with a query that finds complaints:
+X API v2 `GET /2/tweets/search/recent`:
 
 ```
 "@brand" (bug OR broken OR crash OR worst OR "doesn't work" OR terrible) -is:retweet
 ```
 
-Add negative-sentiment keywords and your product's name. Requires a paid API tier and key.
-
-**Notes:**
-- Search is rate-limited and recent-only without enterprise access.
-- For a website, search the **product name + domain** rather than a Twitter handle.
-- Twitter complaints have no rating — treat sentiment/severity via the analysis step.
+- Requires a **paid tier**; free search is recent-only and near-useless for this purpose.
+- For websites, search the product name + domain rather than a handle.
+- No rating — sentiment/severity comes from the analysis step.
 
 ---
 
-## Pasted list (support inbox, CSVs, reviews export)
+## Reddit, G2, Trustpilot, HN, forums
 
-Any freeform text works. Paste:
-- a CSV of complaints (`date,comment,rating`),
-- a support-ticket export,
-- a plain-text list of complaints, one per line,
-- a spreadsheet column of negative comments.
+For products where these communities matter (and for websites):
 
-The skill normalizes whatever you paste into the common review shape.
+| Source | How |
+|--------|-----|
+| **Reddit** | search `site:reddit.com "<product>" bug/crash/complaint` or the subreddit |
+| **G2 / Capterra** | public review pages (B2B) |
+| **Trustpilot** | public reviews (filter low stars) |
+| **Hacker News** | Algolia API (`hn.algolia.com/api/v1/search?query=<product>`) |
+| **YouTube** | comment scraping is hard; prefer a manual pull |
+| **In-app feedback / NPS** | your own support tool export — the highest-signal source |
+
+---
+
+## Pasted list (support inbox, CSVs, exports)
+
+Any freeform text: a CSV (`date,comment,rating`), a support-ticket export, a plain list, or a
+spreadsheet column. The skill normalizes whatever you paste.
+
+---
+
+## Cross-source dedupe
+
+The same complaint often appears on Play + App Store + Twitter + Reddit. After **clustering** (not
+before), merge themes that are the same issue regardless of source — one theme, `source` listing all
+the places it appeared, `evidence_count` summed once. Don't count the same user's complaint twice.
 
 ---
 
 ## Normalized review shape
 
-Regardless of source, normalize to:
-
 ```jsonc
 {
-  "source": "play-store | app-store | twitter | pasted",
-  "rating": 2,              // 1–5, or null for twitter/pasted
-  "text": "The checkout button does nothing…",
-  "date": "2026-10-01"
+  "source": "play-store | app-store | twitter | reddit | g2 | trustpilot | pasted",
+  "rating": 2,              // 1–5, or null for twitter/pasted/forums
+  "text": "The checkout button does nothing…",   // PII already redacted
+  "date": "2026-10-01",
+  "app_version": "4.2.0"    // optional — enables regression detection
 }
 ```
 
-Optional `app_version` when the source provides it (useful to spot regressions).
+`app_version` is the single most useful extra field: it lets you flag **release-introduced** bugs.

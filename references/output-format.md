@@ -1,76 +1,89 @@
-# Output Format — Feature Requests, selection, and handoff
+# Output Format — defects, features, selection, handoff, verify
 
-Three artifacts: the **ranked feature requests**, the **selection checklist**, and the **selected
-backlog** (implementation handoff).
+Four artifacts: the **ranked requests** (split defects/features), the **selection checklist**, the
+**selected backlog**, and the **verify plan**.
 
 ---
 
-## 1. Feature Request schema
+## 1. Request schema (defect or feature)
 
 ```
-FR-### · <title>                          [<category> · <severity> · <priority_score>]
-  source:      <play-store | app-store | twitter | pasted> (comma-joined if multiple)
+<ID> · <title>                          [<type> · <severity> · <tier> · prevalence <n>]
+  source:      <play-store | app-store | twitter | reddit | pasted> (comma-joined)
   evidence:    <N> of <M> negative reviews (<P>%)   +   <N_recent> in last 90 days
-  problem:     <what users experience, in their own words>
+  regression:  <true | false>   (spike in the latest app_version)
+  problem:     <what users experience, paraphrased — no PII, no verbatim quote>
   solution:    <the proposed change, concrete and scoped>
   acceptance:  - <testable criterion 1>
                - <testable criterion 2>
-  effort:      <S | M | L>   (optional estimate)
+  effort:      <S | M | L>
+  metric:      <the number to re-check after implementing>
 ```
 
 Rules:
-- **Title** — imperative and in the user's voice: "Fix …", "Add …", "Reduce …", "Remove …".
-- **problem** — paraphrase faithfully; include one short verbatim quote (un-attributed) if helpful.
-- **acceptance** — 2–4 statements that can be turned into tests. Avoid vague words ("better", "nice").
+- **Title** — imperative, user voice: "Fix …", "Add …", "Reduce …", "Remove …".
+- **type** — `defect` or `feature` (from the category mapping in the analysis framework).
+- **problem** — anonymized paraphrase; no reviewer identity; a short reworded excerpt at most.
+- **acceptance** — 2–4 testable statements; no vague words ("better", "nice").
+- **metric** — how you'll verify the fix worked (crash-free sessions, star-rating, funnel %, re-review).
 
 ---
 
 ## 2. Selection checklist
 
-Present all feature requests, ranked, as a Markdown checkbox list the user edits:
+Present split into **Defects** and **Features**, each ranked:
 
 ```markdown
-## Feature requests — pick what to implement
+## Defects
+- [ ] FR-001 Fix data loss after update       (bug · critical)
+- [ ] FR-002 Fix checkout crash on payment    (bug · blocker)
 
-- [ ] FR-001 Fix checkout crash on the payment screen  (bug · blocker · 87)
-- [ ] FR-002 Add CSV export                            (feature · high · 72)
-- [ ] FR-003 Reduce startup time to under 2s           (performance · medium · 55)
-- [ ] FR-004 Add dark mode                              (ux · low · 30)
+## Features
+- [ ] FR-003 Add CSV export                   (feature · high)
+- [ ] FR-004 Add dark mode                    (ux · low)
 ```
 
-The user checks the boxes they want (or says "implement FR-001, FR-003"). Detect checked items, or
-parse the explicit IDs.
+The user checks items (or says "implement FR-001, FR-003"). For large lists, allow "select all
+blockers", "top-N", or "all defects".
 
 ---
 
-## 3. Selected backlog (implementation handoff)
+## 3. Selected backlog (handoff)
 
-Write the chosen items to `BACKLOG.md` (or `backlog.json`), ordered by priority, each expanded to a
-full implementation spec:
+Write the chosen items to `BACKLOG.md`, ordered by rank, each expanded to a full spec:
 
 ```markdown
 # Selected backlog
 
-## FR-001 — Fix checkout crash on the payment screen
-**Category / severity:** bug · blocker
-**Evidence:** 12 of 340 negative reviews; 9 in the last 90 days.
-**Problem:** Tapping "Pay" crashes the app for some users on the latest version.
-**Solution:** Null-guard the order-total calculation and add a retry path on payment failure.
+## FR-001 — Fix data loss after update  (defect · critical)
+**Problem:** Users report notes disappearing after the latest update.
+**Solution:** Restore the previous migration path and add a pre-update backup.
 **Acceptance criteria:**
-- [ ] Checkout completes without crashing on the payment screen.
-- [ ] A failed payment shows an inline error and allows retry without restart.
-**Effort:** M
+- [ ] Updating from any prior version preserves all notes.
+- [ ] A failed migration rolls back without data loss.
+**Metric:** data-loss reports drop to 0; no re-review mentioning lost notes.
 ```
 
 ---
 
 ## 4. Implementation (test-first)
 
-For each selected item, before writing the fix:
+For each selected item:
 
-1. Turn each acceptance criterion into a failing test (the *red* step).
-2. Implement the minimal change to pass (the *green* step).
-3. Refactor and confirm the tests still pass.
+1. Turn each acceptance criterion into a failing test (red).
+2. Implement the minimal change to pass (green).
+3. Refactor and confirm tests still pass.
 
-The acceptance criteria above *are* the test cases — the handoff is complete when every criterion has
-a passing test.
+The acceptance criteria *are* the test cases.
+
+---
+
+## 5. Verify
+
+After implementing, re-check each item's `metric`:
+
+- **Bug/crash** → re-pull recent reviews, watch crash-free-session rate.
+- **Performance** → re-measure (startup, load).
+- **Feature** → watch adoption/usage and new reviews.
+
+A fix is not "done" until the metric moved in the right direction. If it didn't, reopen the item.

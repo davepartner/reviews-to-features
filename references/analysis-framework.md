@@ -1,4 +1,4 @@
-# Analysis Framework — from complaints to ranked features
+# Analysis Framework — from complaints to ranked requests
 
 The deterministic, reproducible method. Follow it in order; keep the raw data and each intermediate
 artifact so the result is auditable and re-runnable.
@@ -7,80 +7,103 @@ artifact so the result is auditable and re-runnable.
 
 ## Step 1 — Filter (keep only negative, actionable)
 
-- **Reviews:** keep `rating <= 3`. Also drop low-rating reviews with no actionable content (e.g. "ok",
-  "meh", or irrelevant noise).
-- **Twitter / pasted:** keep items with **negative sentiment** and a concrete complaint. Drop pure
+- **Reviews:** keep `rating <= 3`. Drop low-rating reviews with no actionable content ("ok", "meh",
+  noise).
+- **Twitter / pasted / forums:** keep items with **negative sentiment** and a concrete complaint. Drop
   praise, spam, and off-topic posts.
 
-Discard personally identifying info from what you retain (see privacy rules in `SKILL.md`).
+## Step 2 — Normalize + redact PII
 
-## Step 2 — Normalize
+Map every item to `{ source, rating, text, date, app_version? }`.
 
-Map every item to `{ source, rating, text, date }`.
+**Redact before storing:** remove reviewer usernames, emails, and handles. Store aggregate counts and
+short **anonymized paraphrases**, not verbatim quotes — a verbatim quote is often searchable and
+deanonymizing. If you must keep a quote, truncate and reword it.
 
-## Step 3 — Cluster (group by theme)
+## Step 3 — Sample (for large sets)
 
-Assign each item to **one or two themes**. Themes are short, concrete phrases in the user's language:
+If the filtered set is large (say > 500), sample rather than read everything:
 
-- "checkout crashes on payment"
-- "app is slow to start"
-- "can't export my data"
-- "too many ads"
-- "login fails with Google"
-- "no dark mode"
+- Stratify by **rating** (1★, 2★, 3★) and **recency** (last 90 days vs older).
+- Cap the sample (e.g. 500 items).
+- Record the sample size and treat `evidence_count` as *of the sample*, noting it in the output.
 
-Guidance:
-- Let themes **emerge from the data** (read a sample, draft themes, refine) — don't force a preset list.
-- Prefer **specific** themes over generic ("checkout crash" > "bugs").
-- Split if a theme mixes two distinct problems; merge if two themes are the same complaint worded
-  differently.
+## Step 4 — Cluster (single primary theme)
 
-## Step 4 — Classify
+Assign each item to **exactly one** primary theme. A deterministic recipe:
 
-For each theme, assign:
+1. **Embed** each item's text (any embedding model).
+2. **Group** items whose cosine similarity is **≥ 0.8** (adjust the threshold up for tighter themes,
+   down for broader ones).
+3. **Name** each theme canonically: imperative, ≤ 6 words — "Fix checkout crash", "Add CSV export",
+   "Reduce startup time".
+4. **Dedupe near-duplicate themes** (two themes with mean cross-similarity ≥ 0.8 are one).
 
-**Category:**
-`bug` · `performance` · `ux` · `feature` · `pricing` · `support` · `security` · `content`
+Single-primary assignment removes double-counting: each item contributes to exactly one
+`evidence_count`.
 
-**Severity:**
+## Step 5 — Classify
+
+For each theme:
+
+**Category** — `bug · performance · ux · feature · pricing · support · security · content`.
+
+**Type** — map category to type:
+
+| Category | Type |
+|----------|------|
+| bug · performance · security | **defect** |
+| feature · pricing · content | **feature** |
+| ux | defect if "broken/confusing", feature if "enhancement" — decide case-by-case |
+
+**Severity** — `blocker · high · medium · low`:
 - `blocker` — app unusable, data loss, or crash affecting many users.
 - `high` — breaks a core flow for some users.
 - `medium` — real pain, workaround exists.
 - `low` — annoyance / nice-to-have.
 
-## Step 5 — Score & rank
+**Critical flag** — mark `critical: true` for anything in the `security` category or involving data
+loss / account compromise, even at low evidence count.
+
+## Step 6 — Rank (severity-first)
+
+**Primary — severity tier:**
 
 ```
-frequency       = evidence_count / total_negative_reviews        (clamp 0–1)
-severity_weight = blocker 1.0 · high 0.8 · medium 0.5 · low 0.25
-recency_weight  = 0.5 + 0.5 × (recent_evidence / evidence)       (recent = last 90 days)
-
-priority_score  = round(100 × frequency × severity_weight × recency_weight)
+blocker (3) > high (2) > medium (1) > low (0)
+critical  pins ABOVE blocker
 ```
 
-- `evidence_count` = number of items assigned to the theme.
-- `recent_evidence` = items within the last 90 days.
-- `total_negative_reviews` = the filtered set size (after Step 1).
-
-Sort descending by `priority_score`. Break ties by severity, then evidence count.
-
-## Step 6 — Convert
-
-One **Feature Request** per theme, in ranked order. Follow `references/output-format.md` exactly so the
-output is machine-readable for the implementation step.
-
-## Worked scoring (illustrative)
-
-`total_negative = 340`. Theme "checkout crash": 12 items, 9 recent, severity `blocker`.
+**Secondary — prevalence (within a tier):**
 
 ```
-frequency       = 12 / 340       = 0.035
-severity_weight = 1.0
-recency_weight  = 0.5 + 0.5 × (9/12) = 0.875
-priority_score  = round(100 × 0.035 × 1.0 × 0.875) = 3   ← note: low because frequency is low
+prevalence = 100 × frequency × recency_weight
+  frequency      = evidence_count / total_negative   (clamped 0–1)
+  recency_weight = 0.5 + 0.5 × (recent_evidence / evidence)   (recent = last 90 days)
 ```
 
-> **Reality check:** with a large review set, a single theme rarely exceeds a few percent of *all*
-> negative reviews. Frequency is intentionally a share of the **negative** set, so the score is
-> meaningful relative to other complaints — read it as a *ranking*, not an absolute magnitude. If you
-> want blockers to dominate regardless, weight severity more heavily.
+Sort by tier (descending), then prevalence (descending), then evidence count. This is the reference
+`examples/score.mjs`; run `node --test examples/*.test.mjs` to verify it.
+
+**Why severity-first:** a rare data-loss bug must outrank a common "add dark mode" request. Frequency
+orders *within* a tier; it never overrides severity.
+
+## Step 7 — Regression flagging
+
+If `app_version` is present, compare each theme's rate in the **latest version** vs older versions. A
+theme that spikes in the latest version is a **release-introduced bug** — flag it `regression: true`
+and promote it (it's fresh breakage, not a long-standing complaint).
+
+## Worked ranking (illustrative)
+
+`total_negative = 340`.
+
+| Theme | evidence | severity | category | critical | tier | prevalence |
+|-------|----------|----------|----------|----------|------|------------|
+| Data loss after update | 2 | blocker | bug | ✅ | above blocker | 1 |
+| Checkout crash | 12 | blocker | bug | — | blocker | 4 |
+| CSV export | 30 | high | feature | — | high | 9 |
+| Dark mode | 100 | low | ux | — | low | 29 |
+
+Even though "dark mode" has 100 mentions, the 2-mention data-loss bug and the 12-mention crash rank
+above it. That's the point of severity-first ranking.

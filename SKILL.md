@@ -2,138 +2,141 @@
 name: reviews-to-features
 description: >-
   Turn negative user feedback into an actionable, itemized feature backlog. Collects negative reviews
-  from the Google Play Store, Apple App Store, Twitter/X (for websites), or a pasted list of customer
-  complaints; clusters, classifies, and ranks them; converts each cluster into a feature request with
-  acceptance criteria; then lets the user pick which items to implement. Use when mining app-store
-  reviews, analyzing customer complaints, building a voice-of-the-customer roadmap, or turning negative
-  feedback into prioritized fixes. Triggers: "analyze app reviews", "play store reviews", "app store
-  reviews", "negative reviews", "customer complaints", "turn complaints into features", "feature
-  backlog from feedback", "voice of the customer", "review mining", "what are users complaining about".
+  from the Google Play Store, Apple App Store, Twitter/X, Reddit, or a pasted list of customer
+  complaints; clusters, classifies, and ranks them (severity-first, with a critical fast lane);
+  converts each cluster into a defect or feature request with acceptance criteria; then lets the user
+  pick which to implement and verifies the result. Use when mining app-store reviews, analyzing
+  customer complaints, building a voice-of-the-customer roadmap, or turning negative feedback into
+  prioritized fixes. Triggers: "analyze app reviews", "play store reviews", "app store reviews",
+  "negative reviews", "customer complaints", "turn complaints into features", "feature backlog from
+  feedback", "voice of the customer", "review mining", "what are users complaining about".
 ---
 
 # Reviews → Features — Feedback-Mining Skill
 
-Turn the loudest, most frustrated voices in your reviews into a **ranked, itemized feature backlog**
-you can act on. This skill collects negative feedback, makes sense of it, converts it into concrete
-feature requests, and hands you a checklist to pick what gets built.
-
-It is **source-agnostic** — it works identically whether the input is Play Store reviews, App Store
-reviews, Twitter/X mentions, or a pasted list of complaints from your support inbox.
+Turn the loudest, most frustrated voices in your reviews into a **ranked, itemized backlog** of
+defects and features you can act on. This skill collects negative feedback, clusters and ranks it,
+converts it into concrete requests, hands you a checklist to pick what gets built, and verifies the
+result after implementation.
 
 ---
 
 ## The pipeline
 
 ```
-Collect ──▶ Analyze ──▶ Convert ──▶ Select ──▶ Implement
-  raw        clusters     features     checklist    backlog → code
- reviews      + ranks     (itemized)   (user picks) (TDD handoff)
+Collect ──▶ Analyze ──▶ Convert ──▶ Select ──▶ Implement ──▶ Verify
+  raw        clusters     defects/     checklist    backlog        re-check
+ reviews      + ranks     features     (you pick)   → code         the metric
 ```
 
-1. **Collect** — pull negative reviews/complaints from one or more sources into a normalized list.
-2. **Analyze** — cluster them by theme, classify (bug vs UX vs feature vs pricing…), assign severity,
-   and rank by a transparent score.
-3. **Convert** — emit one **feature request** per cluster, with problem, evidence, solution, and
-   acceptance criteria.
-4. **Select** — present an itemized checklist; the user checks the items they want.
-5. **Implement** — each selected item becomes a spec with acceptance criteria, implemented test-first.
+1. **Collect** — pull negative reviews/complaints into a normalized list.
+2. **Analyze** — cluster by theme (single primary theme), classify, and rank **severity-first**.
+3. **Convert** — emit one **defect** or **feature request** per cluster, with acceptance criteria.
+4. **Select** — present an itemized checklist; the user checks what to build.
+5. **Implement** — each selected item becomes a spec implemented test-first.
+6. **Verify** — re-check the metric that motivated the item (crash rate, rating, funnel, review
+   sentiment) to confirm the fix actually worked.
+
+---
+
+## The ranking (severity-first, not frequency-first)
+
+Frequency alone is a trap: a catastrophic but rare bug (data loss) must outrank a common but trivial
+request ("add dark mode"). So rank in two tiers:
+
+1. **Severity tier (primary):** `blocker > high > medium > low`. A **critical** item (`security`
+   category, or anything flagged `critical: true` — data loss, breach) pins **above** blocker.
+2. **Prevalence (secondary, within a tier):**
+   ```
+   prevalence = 100 × frequency × recency_weight
+     frequency      = evidence_count / total_negative   (clamped 0–1)
+     recency_weight = 0.5 + 0.5 × (recent_evidence / evidence)   (recent = last 90 days)
+   ```
+
+Sort by tier, then prevalence, then evidence count. A tested reference implementation is in
+`examples/score.mjs` (`node --test examples/*.test.mjs`).
 
 ---
 
 ## Input sources
 
-| Source | How | Notes |
-|--------|-----|-------|
-| **Google Play Store** | Play Console Reviews API (OAuth) or `google-play-scraper` | Reviews are public; the API is the authorized path |
-| **Apple App Store** | Public RSS feed (`itunes.apple.com/.../rss/customerreviews/.../json`) — no auth | See `examples/fetch-appstore-reviews.mjs` |
-| **Twitter / X** | X API v2 (search recent) for brand mentions | For websites; needs an API key |
-| **Pasted list** | Any CSV / plain text / support export | No tooling required |
+| Source | How | Caveat |
+|--------|-----|--------|
+| **Apple App Store** | Public RSS feed (no auth) — `examples/fetch-appstore-reviews.mjs` | per-storefront, ~500 entries/page |
+| **Google Play Store** | Play Console Reviews API (OAuth, your own app) | no public official API; `google-play-scraper` is fragile |
+| **Twitter / X** | X API v2 search | paid tier; free search is near-useless |
+| **Reddit / G2 / Trustpilot / HN** | search + public pages | see `references/sources.md` |
+| **Pasted list** | any CSV / support export / plain text | no tooling |
 
-Exact endpoints and library references: `references/sources.md`.
+Exact endpoints: `references/sources.md`.
 
 ---
 
-## The analysis framework (summary)
+## The analysis rules (core, self-contained)
 
-1. **Filter** — keep only negative, actionable feedback (rating ≤ 3 stars, or negative sentiment).
-2. **Normalize** — map every source to one review shape: `{ source, rating, text, date }`.
-3. **Cluster** — group by theme ("checkout crashes", "too many ads", "can't export"). Allow multi-label.
-4. **Classify** — category (`bug | performance | ux | feature | pricing | support | security`) and
-   severity (`blocker | high | medium | low`).
-5. **Score** — a transparent, reproducible priority:
+1. **Filter** — keep only negative, actionable feedback (rating ≤ 3 stars, or negative sentiment with a
+   concrete complaint). Drop praise, spam, and noise.
+2. **Redact PII** — before storing, strip reviewer names/emails/handles. Keep aggregate counts and
+   short, anonymized paraphrases — **not** verbatim quotes (quotes are searchable and deanonymizing).
+3. **Cluster** — assign each item to exactly **one primary theme**. Embed the text, group by cosine
+   similarity ≥ a threshold (0.8), and name each theme canonically (imperative, ≤ 6 words:
+   "Fix checkout crash", "Add CSV export"). Dedupe near-duplicate themes.
+4. **Classify** — category (`bug | performance | ux | feature | pricing | support | security | content`)
+   and severity (`blocker | high | medium | low`). Map to **type**: `defect` for
+   `bug | performance | security`; `feature` for `feature | pricing | content` (use `ux` case-by-case).
+5. **Rank** — severity-first (above), then prevalence. Flag regressions: a theme that spikes in the
+   latest `app_version` is a release-introduced bug — promote it.
+6. **Sample for scale** — for large sets, sample stratify by rating + recency (cap ~500) before
+   clustering.
 
-```
-priority_score = round(100 × frequency × severity_weight × recency_weight)
-
-  frequency      = evidence_count / total_negative_reviews   (clamped to 1)
-  severity_weight = blocker 1.0 · high 0.8 · medium 0.5 · low 0.25
-  recency_weight  = 0.5 + 0.5 × (recent_evidence / evidence)  (recent = last 90 days)
-```
-
-6. **Rank** — sort by `priority_score` descending.
-
-Full detail, including clustering guidance and worked scoring: `references/analysis-framework.md`.
+Full detail: `references/analysis-framework.md`.
 
 ---
 
 ## Output format
 
-Each cluster becomes a **Feature Request** (schema in `references/output-format.md`):
+Each cluster becomes a **defect** or **feature** request, presented split and itemized for selection:
 
 ```
-FR-003 · Fix checkout crash on the payment screen          [bug · blocker · 87]
-  source: app-store + play-store
-  evidence: 12 of 340 negative reviews (3.5%)
-  problem: Users report the app crashes when tapping "Pay"…
-  solution: …
-  acceptance: [ "Checkout completes without crashing", "No crash on retry", … ]
+DEFECTS
+FR-001 · Fix data loss after update            [bug · critical · top]
+FR-002 · Fix checkout crash on payment         [bug · blocker]
+
+FEATURES
+FR-003 · Add CSV export                        [feature · high]
+FR-004 · Add dark mode                         [ux · low]
 ```
 
-Feature requests are presented as an **itemized checklist** for selection:
-
-```markdown
-## Feature requests (ranked)
-- [ ] FR-001 Fix checkout crash on the payment screen  (bug · blocker · 87)
-- [ ] FR-002 Add CSV export  (feature · high · 72)
-- [ ] FR-003 Reduce startup time  (performance · medium · 55)
-```
-
-The user checks the items they want (or says "implement FR-001, FR-003"). See
-`references/output-format.md` for the exact schema and handoff artifact.
+Schema + the selection checklist + the test-first handoff: `references/output-format.md`.
 
 ---
 
-## Selection → implementation handoff
+## Selection → implementation → verify
 
-After the user picks items, write a **selected backlog** (`BACKLOG.md`) where each item is a full spec:
-
-1. **Title** — in the user's voice, actionable.
-2. **Problem** — what users experience, with evidence (quote count, source).
-3. **Solution** — the proposed change.
-4. **Acceptance criteria** — testable statements.
-5. **Priority / effort** — from the analysis.
-
-Then implement **test-first**: for each item, write a failing test for its acceptance criteria, make it
-pass, refactor. This plugs into any existing implementation workflow (TDD, planner, etc.).
+1. User checks items (or says "implement FR-001, FR-003").
+2. Write the selected items to `BACKLOG.md`, each with problem / solution / acceptance criteria.
+3. Implement **test-first**: each acceptance criterion becomes a failing test, then pass, then refactor.
+4. **Verify**: define and re-check the metric that motivated each item (crash rate, rating, funnel,
+   re-review) — a fix isn't done until the number moved.
 
 ---
 
 ## Privacy & ethics (non-negotiable)
 
-- **Anonymize.** Strip reviewer usernames/emails from stored data; keep aggregate counts and short,
-  un-attributed quotes. Comply with GDPR (honour erasure requests).
-- **Prefer official APIs** and respect rate limits and terms of service. Do not bypass auth or scrape
-  in bulk against a provider's ToS.
-- **Own the target.** Use this on your own app/product (or with permission). Do not mine a competitor's
-  reviews to copy them.
-- **Quote faithfully.** Never fabricate or alter a complaint to make a point; mark paraphrases as such.
+- **Redact PII** in the normalize step (above). Store aggregates + anonymized paraphrases, not raw
+  quotes. Honour GDPR erasure requests.
+- **Retention:** scraped reviews are personal data — keep a retention limit and delete stale pulls.
+- **Prefer official APIs**, respect rate limits and ToS. Scraping can break and may violate ToS.
+- **Own the target** — use on your own product, not a competitor's, and never fabricate or alter
+  complaints.
 
 ---
 
 ## References
 
-- `references/sources.md` — exact endpoints and libraries for Play Store, App Store, Twitter, pasted.
-- `references/analysis-framework.md` — filtering, clustering, classification, and the scoring formula.
-- `references/output-format.md` — the Feature Request schema, selection checklist, and handoff artifact.
-- `examples/worked-example.md` — a full input → analysis → feature-request → checklist walkthrough.
-- `examples/fetch-appstore-reviews.mjs` — a no-auth scraper for the App Store public feed.
+- `references/sources.md` — endpoints + libraries per source, and cross-source dedupe.
+- `references/analysis-framework.md` — clustering, classification, ranking, sampling in full.
+- `references/output-format.md` — defect/feature schema, selection checklist, handoff, verify.
+- `examples/worked-example.md` — a full input → analysis → features → checklist walkthrough.
+- `examples/score.mjs` — reference ranking implementation (with `score.test.mjs`).
+- `examples/fetch-appstore-reviews.mjs` — no-auth App Store RSS scraper.
