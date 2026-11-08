@@ -5,10 +5,11 @@ Four artifacts: the **ranked requests** (split defects/features), the **selectio
 
 ---
 
-## 1. Request schema (defect or feature)
+## 1. Request schema (fix, gap, or opportunity)
 
 ```
-<ID> · <title>                          [<type> · <severity> · <tier> · prevalence <n>]
+<ID> · <title>                          [<kind> · <severity> · <tier> · prevalence <n>]
+  kind:        <fix | gap | opportunity>
   source:      <play-store | app-store | twitter | reddit | pasted> (comma-joined)
   evidence:    <N> of <M> negative reviews (<P>%)   +   <N_recent> in last 90 days
   regression:  <true | false>   (spike in the latest app_version)
@@ -22,7 +23,8 @@ Four artifacts: the **ranked requests** (split defects/features), the **selectio
 
 Rules:
 - **Title** — imperative, user voice: "Fix …", "Add …", "Reduce …", "Remove …".
-- **type** — `defect` or `feature` (from the category mapping in the analysis framework).
+- **kind** — `fix` (your defect), `gap` (you lack a validated/requested feature), or
+  `opportunity` (a competitor pain point you can do better).
 - **problem** — anonymized paraphrase; no reviewer identity; a short reworded excerpt at most.
 - **acceptance** — 2–4 testable statements; no vague words ("better", "nice").
 - **metric** — how you'll verify the fix worked (crash-free sessions, star-rating, funnel %, re-review).
@@ -31,16 +33,18 @@ Rules:
 
 ## 2. Selection checklist
 
-Present split into **Defects** and **Features**, each ranked:
+Present split into **Fixes**, **Gaps**, and **Opportunities**, each ranked:
 
 ```markdown
-## Defects
+## Fixes
 - [ ] FR-001 Fix data loss after update       (bug · critical)
 - [ ] FR-002 Fix checkout crash on payment    (bug · blocker)
 
-## Features
-- [ ] FR-003 Add CSV export                   (feature · high)
-- [ ] FR-004 Add dark mode                    (ux · low)
+## Gaps
+- [ ] FR-003 Add CSV export                   (feature · high · competitor praised)
+
+## Opportunities
+- [ ] FR-004 Offer offline mode               (feature · medium · differentiator)
 ```
 
 The user checks items (or says "implement FR-001, FR-003"). For large lists, allow "select all

@@ -4,34 +4,41 @@ description: >-
   Turn negative user feedback into an actionable, itemized feature backlog. Collects negative reviews
   from the Google Play Store, Apple App Store, Twitter/X, Reddit, or a pasted list of customer
   complaints; clusters, classifies, and ranks them (severity-first, with a critical fast lane);
-  converts each cluster into a defect or feature request with acceptance criteria; then lets the user
-  pick which to implement and verifies the result. Use when mining app-store reviews, analyzing
-  customer complaints, building a voice-of-the-customer roadmap, or turning negative feedback into
-  prioritized fixes. Triggers: "analyze app reviews", "play store reviews", "app store reviews",
-  "negative reviews", "customer complaints", "turn complaints into features", "feature backlog from
-  feedback", "voice of the customer", "review mining", "what are users complaining about".
+  converts each cluster into a fix, gap, or opportunity with acceptance criteria; then lets the user
+  pick which to implement and verifies the result. Also inventories the user's current project and
+  mines competitors' reviews to surface feature gaps and differentiation opportunities. Use when mining
+  app-store reviews, analyzing customer complaints, doing competitive gap analysis, or building a
+  voice-of-the-customer roadmap. Triggers: "analyze app reviews", "play store reviews", "app store
+  reviews", "negative reviews", "customer complaints", "turn complaints into features", "feature
+  backlog from feedback", "voice of the customer", "review mining", "competitor reviews", "competitive
+  analysis", "gap analysis", "feature inventory", "what features am I missing".
 ---
 
 # Reviews → Features — Feedback-Mining Skill
 
-Turn the loudest, most frustrated voices in your reviews into a **ranked, itemized backlog** of
-defects and features you can act on. This skill collects negative feedback, clusters and ranks it,
-converts it into concrete requests, hands you a checklist to pick what gets built, and verifies the
-result after implementation.
+Turn the loudest, most frustrated voices in your reviews — and in your competitors' — into a
+**ranked, itemized backlog** of fixes, gaps, and opportunities you can act on. This skill inventories
+your current project, mines your negative feedback and your competitors' reviews, clusters and ranks
+them, converts them into concrete requests, hands you a checklist to pick what gets built, and
+verifies the result after implementation.
 
 ---
 
 ## The pipeline
 
 ```
-Collect ──▶ Analyze ──▶ Convert ──▶ Select ──▶ Implement ──▶ Verify
-  raw        clusters     defects/     checklist    backlog        re-check
- reviews      + ranks     features     (you pick)   → code         the metric
+Understand ──▶ Collect ──▶ Analyze ──▶ Convert ──▶ Select ──▶ Implement ──▶ Verify
+ inventory     own +       own themes   fixes,       checklist    backlog      re-check
+ (features)    competitor  + competitor gaps,        (you pick)   → code       the metric
+               reviews     pain/praise  opportunities
 ```
 
-1. **Collect** — pull negative reviews/complaints into a normalized list.
-2. **Analyze** — cluster by theme (single primary theme), classify, and rank **severity-first**.
-3. **Convert** — emit one **defect** or **feature request** per cluster, with acceptance criteria.
+0. **Understand** — inventory the current project's existing features (from the codebase/README, or
+   ask). This anchors the gap analysis.
+1. **Collect** — pull **your** negative reviews *and* **competitors'** reviews (negative + positive).
+2. **Analyze** — cluster your complaints; extract competitors' pain points, requests, and praise.
+3. **Convert** — emit **fixes** (your defects), **gaps** (features you lack), and **opportunities**
+   (competitor pain points you can do better).
 4. **Select** — present an itemized checklist; the user checks what to build.
 5. **Implement** — each selected item becomes a spec implemented test-first.
 6. **Verify** — re-check the metric that motivated the item (crash rate, rating, funnel, review
@@ -72,6 +79,32 @@ Exact endpoints: `references/sources.md`.
 
 ---
 
+## Competitive analysis — mine competitors to find your gaps
+
+Beyond your own complaints, mine **your competitors' reviews** to find what you're missing:
+
+1. **Inventory your project** — list your existing features (read the codebase/README/routes; ask if
+   ambiguous). This is your "have" list.
+2. **Identify competitors** — 2–5 direct rivals.
+3. **Mine their reviews** — pull **negative** (≤3★) *and* **positive** (4–5★) per competitor, then
+   extract three signals:
+   - **Pain points** — recurring complaints → an **opportunity** to do it better.
+   - **Requests** — "I wish it had X" → a **gap** you may share.
+   - **Praise** — recurring "I love X" → a **validated** feature (table stakes).
+4. **Build the gap matrix** — cross your inventory against competitor signals:
+
+   | Feature | You | Competitor | Signal | Action |
+   |---------|-----|-----------|--------|--------|
+   | CSV export | ✗ | ✓ praised | validated gap | **Add** (gap) |
+   | Offline mode | ✗ | ✓ complained | gap + weakness | **Differentiate** (opportunity) |
+
+5. **Emit suggestions** — **Fix** (your defect), **Gap** (a validated/requested feature you lack),
+   **Opportunity** (a competitor pain point you can exploit).
+
+Full method: `references/competitive-analysis.md`.
+
+---
+
 ## The analysis rules (core, self-contained)
 
 1. **Filter** — keep only negative, actionable feedback (rating ≤ 3 stars, or negative sentiment with a
@@ -95,16 +128,18 @@ Full detail: `references/analysis-framework.md`.
 
 ## Output format
 
-Each cluster becomes a **defect** or **feature** request, presented split and itemized for selection:
+Each cluster becomes a **fix**, **gap**, or **opportunity**, presented split and itemized for selection:
 
 ```
-DEFECTS
+FIXES
 FR-001 · Fix data loss after update            [bug · critical · top]
 FR-002 · Fix checkout crash on payment         [bug · blocker]
 
-FEATURES
-FR-003 · Add CSV export                        [feature · high]
-FR-004 · Add dark mode                         [ux · low]
+GAPS
+FR-003 · Add CSV export                        [feature · high · competitor praised]
+
+OPPORTUNITIES
+FR-004 · Offer offline mode (competitors' sync breaks)  [feature · medium · differentiator]
 ```
 
 Schema + the selection checklist + the test-first handoff: `references/output-format.md`.
@@ -127,8 +162,9 @@ Schema + the selection checklist + the test-first handoff: `references/output-fo
   quotes. Honour GDPR erasure requests.
 - **Retention:** scraped reviews are personal data — keep a retention limit and delete stale pulls.
 - **Prefer official APIs**, respect rate limits and ToS. Scraping can break and may violate ToS.
-- **Own the target** — use on your own product, not a competitor's, and never fabricate or alter
-  complaints.
+- **Own the target** — mine your own product's reviews freely. Analyzing competitors' *public* reviews
+  for gap analysis is fair market research, but don't copy their IP, don't bypass auth/paywalls, and
+  never fabricate or alter complaints.
 
 ---
 
@@ -136,7 +172,8 @@ Schema + the selection checklist + the test-first handoff: `references/output-fo
 
 - `references/sources.md` — endpoints + libraries per source, and cross-source dedupe.
 - `references/analysis-framework.md` — clustering, classification, ranking, sampling in full.
-- `references/output-format.md` — defect/feature schema, selection checklist, handoff, verify.
+- `references/competitive-analysis.md` — project inventory, competitor mining, gap matrix.
+- `references/output-format.md` — fix/gap/opportunity schema, selection checklist, handoff, verify.
 - `examples/worked-example.md` — a full input → analysis → features → checklist walkthrough.
 - `examples/score.mjs` — reference ranking implementation (with `score.test.mjs`).
 - `examples/fetch-appstore-reviews.mjs` — no-auth App Store RSS scraper.

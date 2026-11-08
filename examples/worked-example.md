@@ -119,3 +119,19 @@ User checked **FR-001, FR-002, FR-005**.
 `BACKLOG.md` holds the three selected items, each with acceptance criteria (→ failing tests first) and
 a `metric` to re-check after implementing. When the fix ships, re-pull recent reviews and confirm the
 metric moved — data-loss reports at 0, no new "checkout crash" mentions, and dark-mode adoption rising.
+
+---
+
+## 6. Competitive angle — gap analysis (bonus)
+
+Suppose NoteVault has two rivals, "NotePro" and "QuickNotes". Mining **their** reviews adds gaps and
+opportunities on top of the fixes:
+
+| Feature | NoteVault | Rivals | Signal | Action |
+|---------|-----------|--------|--------|--------|
+| CSV export | ✗ | ✓ praised ("love the export") | validated gap | **Gap** → add it |
+| Offline mode | ✗ | ✓ complained ("syncs are unreliable offline") | gap + weakness | **Opportunity** → do it right |
+| Dark mode | ✓ | ✓ | parity | — |
+
+These fold into the same backlog as `kind: gap` / `kind: opportunity` items, ranked alongside the
+fixes — a blocker fix still outranks a validated gap.

@@ -4,9 +4,10 @@
 > **ranked, itemized feature backlog** — then implement the ones you pick.
 
 This skill makes an agent (Claude Code, Codex, Cursor, OpenCode, …) act as a **voice-of-the-customer
-analyst**: it collects negative feedback from the Play Store, App Store, Twitter/X, or a pasted list
-of complaints, clusters and ranks it, and converts each cluster into a concrete feature request with
-acceptance criteria. You pick what to build; the agent implements it test-first.
+analyst**: it inventories your current project, collects negative feedback from the Play Store, App
+Store, Twitter/X, or a pasted list — *plus your competitors' reviews* — clusters and ranks it, and
+converts it into fixes, gaps, and opportunities with acceptance criteria. You pick what to build; the
+agent implements it test-first.
 
 Stop guessing what users want. **Read it in the reviews.**
 
@@ -15,17 +16,19 @@ Stop guessing what users want. **Read it in the reviews.**
 ## What it does
 
 ```
-Collect ──▶ Analyze ──▶ Convert ──▶ Select ──▶ Implement ──▶ Verify
- raw        clusters     defects/     checklist    backlog      re-check
- reviews      + ranks    features     (you pick)   → code       the metric
+Understand ──▶ Collect ──▶ Analyze ──▶ Convert ──▶ Select ──▶ Implement ──▶ Verify
+ inventory     own +       own themes   fixes,       checklist    backlog      re-check
+ (features)    competitor  + competitor gaps,        (you pick)   → code       the metric
+               reviews     pain/praise  opportunities
 ```
 
 | Phase | What happens |
 |-------|--------------|
-| **Collect** | Pull negative reviews/complaints (Play Store, App Store, Twitter, or pasted) into one normalized list. |
-| **Analyze** | Cluster by theme (single primary theme), classify, assign severity, and rank **severity-first**. |
-| **Convert** | Emit one **defect or feature request** per cluster — problem, evidence, solution, acceptance criteria. |
-| **Select** | Present an itemized checklist (defects vs features); **you** check the items you want. |
+| **Understand** | Inventory your current project's existing features (from the codebase/README, or ask). |
+| **Collect** | Pull **your** negative reviews *and* **competitors'** reviews (negative + positive) into a normalized list. |
+| **Analyze** | Cluster your complaints; extract competitors' pain points, requests, and praise; rank severity-first. |
+| **Convert** | Emit **fixes** (your defects), **gaps** (features you lack), and **opportunities** (competitor pain points). |
+| **Select** | Present an itemized checklist (fixes vs gaps vs opportunities); **you** check the items. |
 | **Implement** | Each selected item becomes a spec implemented test-first (failing test → pass → refactor). |
 | **Verify** | Re-check the metric that motivated each item (crash rate, rating, funnel) to confirm the fix worked. |
 
@@ -72,7 +75,8 @@ SKILL.md                              # the skill: pipeline, rules, privacy, ref
 references/
 ├── sources.md                        # endpoints + libraries per source (incl. Reddit/G2/etc.)
 ├── analysis-framework.md             # filter → cluster → classify → rank (severity-first)
-└── output-format.md                  # defect/feature schema, selection checklist, verify
+├── competitive-analysis.md           # project inventory, competitor mining, gap matrix
+└── output-format.md                  # fix/gap/opportunity schema, selection checklist, verify
 examples/
 ├── score.mjs                         # reference ranking implementation (testable)
 ├── score.test.mjs                    # unit tests for the ranking
@@ -92,17 +96,17 @@ Copy this prompt into your agent to install the skill and run the pipeline:
 ```
 Pull the reviews-to-features skill from
 https://github.com/davepartner/reviews-to-features (pin it by tag or commit), read SKILL.md, and mine
-negative feedback for this product:
+feedback for this product:
 
-1. Collect negative reviews from one of:
-   - Google Play Store (appId: <YOUR_PACKAGE>)
-   - Apple App Store (appId: <NUMERIC_ID>, country: us)
-   - Twitter/X (query: "<YOUR_PRODUCT>" bug OR crash OR "doesn't work" OR terrible)
-   - or the pasted complaints below.
-2. Cluster, classify, and rank them using the formula in references/analysis-framework.md.
-3. Emit itemized feature requests (FR-###) with problem, solution, and acceptance criteria.
-4. Show me the selection checklist and WAIT for me to pick items before implementing anything.
-5. For each item I select, write a failing test for its acceptance criteria, then implement to pass.
+1. Inventory this project's existing features (read the README/codebase, or ask me).
+2. Collect negative reviews from:
+   - my app: <Play Store appId / App Store id / pasted complaints below>
+   - my competitors: <list 2-5 rivals + their store ids> (pull negative AND positive reviews)
+3. Cluster, classify, and rank them (references/analysis-framework.md) and build the gap matrix
+   (references/competitive-analysis.md) to find fixes, gaps, and opportunities.
+4. Emit itemized requests (FR-###) with problem, solution, and acceptance criteria.
+5. Show me the selection checklist and WAIT for me to pick items before implementing anything.
+6. For each item I select, write a failing test for its acceptance criteria, then implement to pass.
 
 Pasted complaints (if any):
 ---
@@ -119,7 +123,8 @@ Pasted complaints (if any):
 - **Severity-first ranking** — a rare data-loss bug outranks a common "add dark mode" request; tested in
   `examples/score.mjs`.
 - **Source-agnostic** — one pipeline for reviews, tweets, Reddit/G2, and pasted complaints.
-- **Defect vs feature split** — bugs and enhancements get their own lane and urgency.
+- **Competitive gap analysis** — inventories your app and mines competitors' reviews to find what you're missing.
+- **Fix / gap / opportunity split** — your bugs, the features you lack, and competitor pain points each get their own lane.
 - **Actionable + verifiable output** — acceptance criteria double as tests, and each item carries a
   metric to re-check after shipping.
 - **Privacy-first** — PII redaction is a pipeline step, not a suggestion.
@@ -161,7 +166,10 @@ complaint analysis, turn complaints into features, reviews to requirements, requ
 twitter mentions, brand monitoring, social listening, app review scraper, app store scraper, play
 store scraper, google-play-scraper, app-store-scraper, itunes rss, customer reviews feed, acceptance
 criteria, user stories, TDD backlog, defect triage, severity ranking, critical bug, data loss,
-regression detection, app version, reddit, g2, trustpilot, hacker news.
+regression detection, app version, reddit, g2, trustpilot, hacker news, competitive analysis,
+competitor reviews, competitor analysis, gap analysis, feature gap, feature inventory, feature audit,
+product differentiation, differentiation opportunities, market gap, competitive gap, compare with
+competitors, what features am I missing.
 
 AI agent skill, Claude Code skill, Claude skill, Cursor rules, AI coding rules, agent prompt, system
 prompt, LLM rules, agentic development, developer skill, engineering skill, product skill, product
